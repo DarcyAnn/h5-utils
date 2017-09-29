@@ -1,6 +1,6 @@
 {
   "name": "h5-utils",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "common methods for eleme h5 project.",
   "main": "h5-utils.js",
   "scripts": {

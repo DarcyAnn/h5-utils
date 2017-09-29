@@ -33,7 +33,8 @@ const getAppHash = (timeout = 5000, interval = 100) => {
     }
 
     let loop = () => {
-      window.hybridAPI.getGlobalGeohash(hash => {
+      window.hybridAPI.getGlobalGeohash()
+      .then(hash => {
         if (!hash) return
         stop()
         resolve(hash)
