@@ -9,7 +9,7 @@ import resolveFetch from './resolveFetch.js'
 const FROM_OPEN = /opensite/.test(document.domain)
 const APIHOST = FROM_OPEN
   ? location.origin.replace(/\:\/\/opensite([-|.][^.]+)/,"://opensite-restapi$1")
-  : location.origin.replace(/(https?\:\/\/).*?((\.[a-z]*)?\.(ele|elenet){1}\.me)/, '$1mainsite-restapi$2')
+  : location.origin.replace(/(https?\:\/\/).*?((\.[a-z]*)?\.(ele|elenet){1}\.me)/, '$1restapi$2')
 const APIURL = `${APIHOST}/shopping/v1/cities/guess`
 const $get = url => window.fetch(url, {
   credentials: 'include',
