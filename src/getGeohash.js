@@ -3,22 +3,17 @@
  * 依赖：HybridAPI Geohash.js Promise 以及 fetch
  * 优先级：url?geohash=XXX > HybridAPI/AlipayJSAPI > Navigator > restAPI
  */
-
 import resolveFetch from './resolveFetch.js'
 
-const FROM_OPEN = /opensite/.test(document.domain)
-const APIHOST = FROM_OPEN
+const IS_IOS = /iPhone|iPad|iPod|iOS/i.test(navigator.userAgent)
+
+const API_HOST = /opensite/.test(document.domain)
   ? location.origin.replace(/\:\/\/opensite([-|.][^.]+)/,"://opensite-restapi$1")
   : location.origin.replace(/(https?\:\/\/).*?((\.[a-z]*)?\.(ele|elenet){1}\.me)/, '$1restapi$2')
-const APIURL = `${APIHOST}/shopping/v1/cities/guess`
-const $get = url => window.fetch(url, {
-  credentials: 'include',
-}).then(resolveFetch)
 
-const getParamHash = () => {
-  if (!window.UParams) return ''
-  return window.UParams().geohash || ''
-}
+const request = url => window.fetch(url, { credentials: 'omit' }).then(resolveFetch)
+
+const getParamHash = () => window.UParams ? (window.UParams().geohash || '') : ''
 
 const getAppHash = (timeout = 5000, interval = 100) => {
   let intervalTimer = null
@@ -57,9 +52,7 @@ const getNavigatorHash = (timeout = 5000) => {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(position => {
       if (!position.coords.latitude) {
-        reject({
-          name: 'BROWSER_MODE_PERMISSON_FAILED'
-        })
+        reject({ name: 'BROWSER_MODE_PERMISSON_FAILED' })
       }
       resolve(window.Geohash.encode(position.coords.latitude, position.coords.longitude))
     }, reject, {
@@ -69,24 +62,33 @@ const getNavigatorHash = (timeout = 5000) => {
   })
 }
 
-const getAPIHash = () => {
-  return $get(APIURL)
-  .then(({ latitude, longitude }) => {
-    return window.Geohash.encode(latitude, longitude)
-  })
+const getAPIHash = (timeout = 3000) => {
+  const URL = `${API_HOST}/shopping/v1/cities/guess`
+  const timer = new Promise((_, reject) => setTimeout(() => {
+    reject({ name: 'API_GUESS_TIMEOUT' })
+  }, timeout))
+
+  return Promise.race([request(URL), timer])
+  .then(({ latitude, longitude }) => window.Geohash.encode(latitude, longitude))
 }
 
-const getAlipayHash = (timeout = 3000) => {
+const getAlipayHash = () => {
   // 依赖alipay-jssdk
   if (!window.ap) return Promise.reject()
+  // getCurrentLocation since 10.0.18
+  const isOldVersion = ap.compareVersion('10.0.18') < 0
+  const timeout = 10
+  const cacheTimeout = 1800 // 使用30min的缓存
+  const task = isOldVersion ?
+    ap.getLocation({ timeout, cacheTimeout }) :
+    ap.call('getCurrentLocation', {
+      timeout,
+      cacheTimeout,
+      requestType: 0,
+      bizType: IS_IOS ? 'iOS-ele-position' : 'Android-ele-position',
+    })
 
-  return ap.getLocation({
-    timeout: Math.round(timeout / 1000),
-  })
-  .then(res => {
-    const geohash = window.Geohash.encode(res.latitude, res.longitude)
-    return geohash
-  })
+  return task.then(res => window.Geohash.encode(res.latitude, res.longitude))
 }
 
 const browserMode = (timeout) => {
@@ -97,9 +99,6 @@ const browserMode = (timeout) => {
     .catch(() => getAPIHash())
     .then(resolve)
     .catch(reject)
-
-    // 给getAPIHash定位1s时间
-    setTimeout(() => { reject({ error: 'BROWSER_MODE_TIMEOUT' }) }, timeout + 1000)
   })
 }
 
@@ -108,10 +107,7 @@ const appMode = (timeout, browserModeDisabled) => {
     .catch(() => browserModeDisabled ? Promise.reject() : browserMode(timeout * 1 / 3))
 }
 
-const alipayMode = (timeout) => {
-  return getAlipayHash(timeout * 1 / 3)
-    .catch(() => browserMode(timeout * 2 / 3))
-}
+const alipayMode = () => getAlipayHash().catch(() => getAPIHash())
 
 const getGeohash = (timeout = 9000, browserModeDisabled = true) => {
   // 优先使用 URL 中传来的 geohash 参数
@@ -124,7 +120,7 @@ const getGeohash = (timeout = 9000, browserModeDisabled = true) => {
   if (/Eleme/i.test(navigator.userAgent)) {
     source = appMode(timeout, browserModeDisabled)
   } else if (/AlipayClient/.test(navigator.userAgent)) {
-    source = alipayMode(timeout)
+    source = alipayMode()
   } else {
     source = browserMode(timeout)
   }
